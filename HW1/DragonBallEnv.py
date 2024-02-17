@@ -103,17 +103,15 @@ class DragonBallEnv(Env):
             (it can happen when the agent reaches a final state or falls into a hole).
         """
         newstate, cost, terminated = self.P[self.s[0]][a]
+        
         if newstate[0] == self.d1[0]:
             self.collected_dragon_balls[0] = True
         elif newstate[0] == self.d2[0]:
             self.collected_dragon_balls[1] = True
 
         newstate = (newstate[0], self.collected_dragon_balls[0], self.collected_dragon_balls[1])
-
-
         self.s = newstate
         self.lastaction = a
-
         return (newstate, cost, terminated)
 
 
@@ -178,12 +176,17 @@ class DragonBallEnv(Env):
         Sets the current state of the agent.
         """
         self.s = state
+        if self.collected_dragon_balls[0] == False:
+            self.collected_dragon_balls[0] = state[1]
+        if self.collected_dragon_balls[1] == False:
+            self.collected_dragon_balls[1] = state[2]
+
 
     def get_state(self):
         """
         Returns the current state of the agent.
         """
-        return self.s
+        return (self.s[0], self.collected_dragon_balls[0], self.collected_dragon_balls[1])
 
     def is_final_state(self, state: Tuple) -> bool:
         """
@@ -209,7 +212,7 @@ class DragonBallEnv(Env):
         super().reset()
         self.s = self.get_initial_state()
         self.lastaction = None
-
+        self.collected_dragon_balls = [False, False]
         return self.s
 
     def render(self):
