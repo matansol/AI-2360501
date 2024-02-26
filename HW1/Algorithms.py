@@ -240,11 +240,138 @@ class WeightedAStarAgent():
 
 
 class AStarEpsilonAgent():
+    # h_focal(v) = g(v)
     def __init__(self) -> None:
-        raise NotImplementedError
+        self.env = None
         
     def ssearch(self, env: DragonBallEnv, epsilon: int) -> Tuple[List[int], float, int]:
-        raise NotImplementedError
+        self.env = env
+        env.reset()
+        start = env.get_state()
+        root = Node(start, None, 0, None, 0, self.get_hsmap_value(start),self.get_hsmap_value(start))
+        expanded = 0
+        open = heapdict.heapdict()
+        key = (root.h, root.state[0])  # arbitration is by h value and index
+        open[key] = (key, root)
+        close = dict()
+        while open:
+            #node = open.popitem()[1][1] # Automatically chooses min node
+            [node,open] = AStarEpsilonAgent.choose_min_from_focal(open,epsilon)
+            state = node.state
+            if node.parent and node.action is not None:
+                prev_state = node.parent.state if node.parent else None
+                env.reset()
+                env.set_state(prev_state)
+                state, cost, terminated = env.step(node.action)
+                node.state = state
+                node.cost = cost
+            expanded += 1
+            key = (node.f, node.state[0])
+            close[key] = (key, node)
+            succ_dict = env.succ(state)
+            actions = list(succ_dict.keys())
+            for action in actions:
+                next_state, cost, terminated = succ_dict[action]
+                next_state = (next_state[0], state[1], state[2])
+                if terminated:
+                    if env.is_final_state(next_state):
+                        child = Node(next_state, node, cost, action)
+                        actions, total_cost = self._get_path(child)
+                        return actions, total_cost, expanded
+                    else:  # hole
+                        continue
+                new_g_value = node.g + cost
+                h_value = self.get_hsmap_value(next_state)
+                new_f_value =  new_g_value +  h_value
+                existing_state = False
+                for key in open.keys():
+                    if open[key][1].state == next_state:
+                        existing_state = True
+                        current_state_in_open = open[key][1]
+                        if new_f_value < current_state_in_open.f:
+                            # updates better path to node
+                            popped_node = open.pop(key)
+                            key = (new_f_value, current_state_in_open.state[0])
+                            open[key] = (key, popped_node[1])
+                            break
+                for key in close.keys():
+                    if close[key][1].state == next_state:
+                        existing_state = True
+                        current_state_in_close = close[key][1]
+                        if new_f_value < current_state_in_close.f:
+                            # updates better path to node
+                            popped_node = close.pop(key)
+                            key = (new_f_value, current_state_in_close.state[0])
+                            open[key] = (key, popped_node[1])
+                            break
+                if (existing_state == False):
+                    # each node holds his own cost,action and parent only!
+                    # Later when we return the solution, we will return the entire path
+                    new_node = Node(next_state, node, cost, action, new_g_value, h_value, new_f_value)
+                    key = (new_f_value, next_state[0])
+                    open[key] = (key, new_node)
+        return None, -1, -1
+
+    def choose_min_from_focal(open, epsilon):
+        """
+        Returns Min node based on h_focal heuristic (g)
+        from focal set based on epsilon
+        """
+        node = open.peekitem()
+        min_h_val = node[1][1].f # key is comprised of h_val and index
+        focal_value = min_h_val * (1+epsilon)
+        focal_dict = heapdict.heapdict()
+        for key in open.keys():
+            temp_node = open[key][1]
+            if(temp_node.f <= focal_value):
+                key_for_focal_dict = (temp_node.g,temp_node.state[0],key)
+                focal_dict[key_for_focal_dict] = (key_for_focal_dict,temp_node)
+        chosen_object = focal_dict.peekitem()
+        original_key = (chosen_object[0][2])
+        open.pop(original_key)
+        return [chosen_object[1][1],open]
+
+            #Notice! For same G values- should choose also by index?
+
+
+    def calculate_L1(cell1: Tuple[int,int], cell2: Tuple[int,int]) -> int:
+        """
+        Returns the Manhattan distance between the 2 provided
+        [row,col] Tuples.
+        """
+        y_distance = abs(cell1[0]-cell2[0])
+        x_distance = abs(cell1[1] - cell2[1])
+        return x_distance+y_distance
+    def get_hsmap_value(self,current_state)->int:
+        """
+        Returns the hsmap heuristic value for each cell
+        """
+        current_row_col = self.env.to_row_col(current_state)
+        L1_to_d1 = WeightedAStarAgent.calculate_L1(self.env.to_row_col(self.env.d1),current_row_col)
+        L1_to_d2 = WeightedAStarAgent.calculate_L1(self.env.to_row_col(self.env.d2),current_row_col)
+        min_dist = min(L1_to_d1,L1_to_d2)
+        for goal_state in self.env.get_goal_states():
+            L1_to_goal_state = WeightedAStarAgent.calculate_L1(self.env.to_row_col(goal_state),
+                                                               current_row_col)
+            min_dist = min(L1_to_goal_state,min_dist)
+        return min_dist
+
+    def _get_path(self, node: Node) -> (List[int], int):
+        path = []
+        total_cost = 0
+        actions = []
+        while (True):
+            # node.print_node()
+            path.append(node.state)
+            actions.append(node.action)
+            total_cost += node.cost
+            node = node.parent
+            if node.parent is None:
+                break
+        print(f"all the actions:{actions[::-1]}")
+        print(f"all the path:{path[::-1]}")
+
+        return actions[::-1], total_cost
 
 def main():
     MAPS = {
@@ -263,13 +390,15 @@ def main():
             "FLFHFFFG",
         ],
     }
-    env = DragonBallEnv(MAPS["8x8"])
+    #env = DragonBallEnv(MAPS["8x8"])
+    env = DragonBallEnv(MAPS["4x4"])
     state = env.reset()
     print('Initial state:', state)
     print('Goal states:', env.goals)
     print(env.render())
-    a_star_agent =WeightedAStarAgent()
-    result = a_star_agent.search(env,0.5)
+    #a_star_agent =WeightedAStarAgent()
+    a_star_agent = AStarEpsilonAgent()
+    result = a_star_agent.ssearch(env,1)
 
 if __name__ == "__main__":
     main()
