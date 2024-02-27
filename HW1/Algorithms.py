@@ -61,21 +61,19 @@ class BFSAgent():
             print(f"{parent}-{node.action}->{node.state}")
         
     def search(self, env: DragonBallEnv) -> Tuple[List[int], float, int]:
-        self.env = env
         env.reset()
-        start = env.get_state()
-        root = Node(start)
+        self.env = env
+        root = Node(env.get_state())
         expended = 0
         # open is a queue
         open = [root]
         close = set()
         while open:
-            node = open.pop(0)
-            state = node.state
-            
+            node = open.pop(0)    
+            state = node.state        
             if node.parent and node.action is not None:
-                prev_state = node.parent.state if node.parent else None
-                env.reset()
+                prev_state = node.parent.state
+                env.reset() # in order to reset the number of balls collected
                 env.set_state(prev_state)
                 state, cost, terminated = env.step(node.action)
                 node.state = state
@@ -87,22 +85,98 @@ class BFSAgent():
             actions = list(succ_dict.keys())
             for action in actions:
                 next_state, cost, terminated = succ_dict[action]
+                if not next_state: # the cuerrent state is a hole
+                    continue
                 next_state = (next_state[0], state[1], state[2])
-                # print(f"current state={state}, action={action}, next state={next_state}")
+                
                 #if the next state is a final state or hole
                 if terminated:
                     if env.is_final_state(next_state):
                         child = Node(next_state, node, cost, action)
                         actions , total_cost = self._get_path(child)
+                        expended -= 1 # we should not count the last expended
                         return actions, total_cost, expended
-                    else: # hole
-                        continue
+                    # else: # hole
+                    #     if next_state not in close:
+                    #         close.add(next_state)
+                    #         expended += 1
+                    #     continue
             
                 if next_state not in close and next_state not in [n.state for n in open]:
                     child = Node(next_state, node, cost, action)
                     open.append(child)
         return None, -1, -1
+    
+    
+    
+# def solution(node, expanded):
+#       all_costs = 0
+#       actions_list = []
+        
+#       while node.parent_state != None:
+#           all_costs += node.costs
+#           actions_list.append(node.action)
+#           node = node.parent_state
+            
+#       return list(reversed(actions_list)), all_costs, expanded
+# class MOR_Node():
+#     def __init__(self, current_state, parent_state=None, action=0, costs=0, terminated=False,
+#                  g=0, h=0, star_score=0.0) -> None:
+#         self.parent_state = parent_state
+#         self.current_state = current_state
+#         self.action = action
+#         self.terminated = terminated
+#         self.costs = costs
+#         self.g = g # Cost of the location we stand
+#         self.h = h # The msamp heuristic
+#         self.star_score = star_score  # Calculation of g and h   
+# class MOR_BFSAgent():
+#     def __init__(self) -> None:
+#         self.close_list = set()
+#         self.open_list = []
+#         self.expanded = 0
 
+#     def expand(self, env, node):
+#         for action, (state, cost, terminated) in env.succ(node.current_state).items():
+#             if state != None:
+#                 child = MOR_Node(state, node, action, cost, terminated)
+#                 yield child
+
+
+#     def search(self, env: DragonBallEnv) -> Tuple[List[int], float, int]:
+#         env.reset()
+
+#         cur_node = MOR_Node(env.get_initial_state())
+#         if env.is_final_state(cur_node.current_state):
+#             return solution()
+        
+#         self.open_list.append(cur_node)
+
+#         while len(self.open_list) != 0:
+#             cur_node = self.open_list.pop(0)
+#             self.close_list.add(cur_node.current_state)
+#             self.expanded += 1
+#             # if cur_node.current_state == None:
+#             #     print("None state")
+#             #     continue
+#             for child in self.expand(env, cur_node):
+#                 child.current_state = (child.current_state[0], 
+#                                     cur_node.current_state[1] or child.current_state[0] == env.d1[0], 
+#                                     cur_node.current_state[2] or child.current_state[0] == env.d2[0])
+#                 #if child.terminated and not env.is_final_state(child.current_state):
+#                 #    continue
+#                 if child.current_state not in self.close_list and child.current_state not in [node.current_state for
+#                                                                                             node in
+#                                                                                             self.open_list]:
+
+#                     #print(f'state = {child.current_state}')
+#                     if env.is_final_state(child.current_state):
+#                       return solution(child, self.expanded)
+#                     self.open_list.append(child)
+#                     #env.set_state(cur_node.current_state)
+#         return None, None, None
+    
+    
 
 class WeightedAStarAgent():
     # OPEN <- make_node(P.start, NIL, 0, h(P.start)) //order according to f-value
@@ -244,7 +318,7 @@ class AStarEpsilonAgent():
     def __init__(self) -> None:
         self.env = None
         
-    def ssearch(self, env: DragonBallEnv, epsilon: int) -> Tuple[List[int], float, int]:
+    def search(self, env: DragonBallEnv, epsilon: int) -> Tuple[List[int], float, int]:
         self.env = env
         env.reset()
         start = env.get_state()
