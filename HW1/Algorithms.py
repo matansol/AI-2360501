@@ -14,8 +14,6 @@ class Node:
         self.h = h
         self.f = f
     
-    def print_node(self):
-        print(f"state: {self.state}, parent: {self.parent.state if self.parent else None}, action: {self.action}, cost: {self.cost}")
     
 class Agent():
     def __init__(self) -> None:
@@ -38,41 +36,32 @@ class Agent():
         
     def search(self, env: DragonBallEnv) -> Tuple[List[int], float, int]:
         pass
+    
+    def calculate_L1(cell1: Tuple[int,int], cell2: Tuple[int,int]) -> int:
+        """
+        Returns the Manhattan distance between the 2 provided
+        [row,col] Tuples.
+        """
+        y_distance = abs(cell1[0]-cell2[0])
+        x_distance = abs(cell1[1] - cell2[1])
+        return x_distance+y_distance
+    
+    def get_hsmap_value(self,current_state)->int:
+        """
+        Returns the hsmap heuristic value for each cell
+        """
+        current_row_col = self.env.to_row_col(current_state)
+        L1_to_d1 = WeightedAStarAgent.calculate_L1(self.env.to_row_col(self.env.d1),current_row_col)
+        L1_to_d2 = WeightedAStarAgent.calculate_L1(self.env.to_row_col(self.env.d2),current_row_col)
+        min_dist = min(L1_to_d1,L1_to_d2)
+        for goal_state in self.env.get_goal_states():
+            L1_to_goal_state = WeightedAStarAgent.calculate_L1(self.env.to_row_col(goal_state),
+                                                               current_row_col)
+            min_dist = min(L1_to_goal_state,min_dist)
+        return min_dist
 
 
 class BFSAgent(Agent):
-#     function Breadth-First-Search-Graph(problem):
-#       node ← make_node(problem.init_state, null)
-#       if problem.goal(node.state) then return solution(node)
-#       OPEN ← {node} /* a FIFO queue with node as the only element */
-#       CLOSE ← {} /* an empty set */
-#       while OPEN is not empty do:
-#           node ← OPEN.pop() /* chooses the shallowest node in OPEN */
-#           CLOSE.add(node.state)
-#           loop for s in expand(node.state):
-#               child ← make_node(s, node)
-#               if child.state is not in CLOSE and child is not in OPEN:
-#               if problem.goal(child.state) then return solution(child)
-#               OPEN.insert(child)
-#       return failure
-
-    # def __init__(self) -> None:
-    #     self.env = None
-        
-    # def _get_path(self, node: Node) -> (List[int], int):
-    #     path = []
-    #     total_cost = 0
-    #     actions = []
-    #     while(True):
-    #         path.append(node.state)
-    #         actions.append(node.action)
-            
-    #         total_cost += node.cost
-    #         node = node.parent
-    #         if node.parent is None:
-    #             break
-        
-    #     return actions[::-1], total_cost
         
     def search(self, env: DragonBallEnv) -> Tuple[List[int], float, int]:
         env.reset()
@@ -120,33 +109,6 @@ class BFSAgent(Agent):
     
 
 class WeightedAStarAgent(Agent):
-    # OPEN <- make_node(P.start, NIL, 0, h(P.start)) //order according to f-value
-    # CLOSE <- {}
-    # While OPEN != empty_set
-    #   n <- OPEN.pop_min()
-    #   CLOSE <- CLOSE + {n}
-    #   If P.goal_test(n)
-    #     Return path(n)
-    #   For s in P.SUCC (n)
-    #       new_g <- n.g() + P.COST(n.s,s); new_f = new_g + h(s) //newly-computed cost to reach s
-    #      If s NOT IN ( OPEN + CLOSED)
-    #            n' <- make_node(s, n, new_g, new_f )
-    #           OPEN.insert(n’)
-    #       Else if s IN OPEN
-    #           n_curr <- node in OPEN with state s
-    #           If new_f < n_curr.f () //found better path to s
-    #               n_curr <- update_node(s, n, new_g , new_f)
-    #               OPEN.update_key(n_curr) //don’t forget to update place in OPEN…
-    #           Else
-    #       Else // s IN CLOSED
-    #           n_curr <- node in CLOSED with state s
-    #           If new_f < n_curr.f () //found better path to s
-    #               n_curr <- update_node(s, n, new_g , new_f)
-        #           OPEN.insert(n_curr)
-    #               CLOSED.remove(n_curr)
-    # def __init__(self) -> None:
-    #     self.env = None
-    
 
     def search(self, env: DragonBallEnv, h_weight) -> Tuple[List[int], float, int]:
         self.env = env
@@ -179,7 +141,6 @@ class WeightedAStarAgent(Agent):
             for action in actions:
                 next_state, cost, terminated = succ_dict[action]
                 if not next_state: # we are in hole
-                    print(f"hole in state: {state}")
                     break
                 
                 next_state = (next_state[0], state[1], state[2])
@@ -226,42 +187,6 @@ class WeightedAStarAgent(Agent):
                     open[key] = (key,new_node)
         return None, -1, -1
 
-    # def _get_path(self, node: Node) -> (List[int], int):
-    #     path = []
-    #     total_cost = 0
-    #     actions = []
-    #     while (True):
-    #         path.append(node.state)
-    #         actions.append(node.action)
-    #         total_cost += node.cost
-    #         node = node.parent
-    #         if node.parent is None:
-    #             break
-
-    #     return actions[::-1], total_cost
-
-    def calculate_L1(cell1: Tuple[int,int], cell2: Tuple[int,int]) -> int:
-        """
-        Returns the Manhattan distance between the 2 provided
-        [row,col] Tuples.
-        """
-        y_distance = abs(cell1[0]-cell2[0])
-        x_distance = abs(cell1[1] - cell2[1])
-        return x_distance+y_distance
-    
-    def get_hsmap_value(self,current_state)->int:
-        """
-        Returns the hsmap heuristic value for each cell
-        """
-        current_row_col = self.env.to_row_col(current_state)
-        L1_to_d1 = WeightedAStarAgent.calculate_L1(self.env.to_row_col(self.env.d1),current_row_col)
-        L1_to_d2 = WeightedAStarAgent.calculate_L1(self.env.to_row_col(self.env.d2),current_row_col)
-        min_dist = min(L1_to_d1,L1_to_d2)
-        for goal_state in self.env.get_goal_states():
-            L1_to_goal_state = WeightedAStarAgent.calculate_L1(self.env.to_row_col(goal_state),
-                                                               current_row_col)
-            min_dist = min(L1_to_goal_state,min_dist)
-        return min_dist
 
 
 class AStarEpsilonAgent(Agent):
@@ -278,7 +203,6 @@ class AStarEpsilonAgent(Agent):
         open[key] = (key, root)
         close = dict()
         while open:
-            #node = open.popitem()[1][1] # Automatically chooses min node
             [node,open] = AStarEpsilonAgent.choose_min_from_focal(open,epsilon)
             state = node.state
             if node.parent and node.action is not None:
@@ -358,42 +282,5 @@ class AStarEpsilonAgent(Agent):
         open.pop(original_key)
         return [chosen_object[1][1],open]
 
-            #Notice! For same G values- should choose also by index?
 
-
-    def calculate_L1(cell1: Tuple[int,int], cell2: Tuple[int,int]) -> int:
-        """
-        Returns the Manhattan distance between the 2 provided
-        [row,col] Tuples.
-        """
-        y_distance = abs(cell1[0]-cell2[0])
-        x_distance = abs(cell1[1] - cell2[1])
-        return x_distance+y_distance
-    def get_hsmap_value(self,current_state)->int:
-        """
-        Returns the hsmap heuristic value for each cell
-        """
-        current_row_col = self.env.to_row_col(current_state)
-        L1_to_d1 = WeightedAStarAgent.calculate_L1(self.env.to_row_col(self.env.d1),current_row_col)
-        L1_to_d2 = WeightedAStarAgent.calculate_L1(self.env.to_row_col(self.env.d2),current_row_col)
-        min_dist = min(L1_to_d1,L1_to_d2)
-        for goal_state in self.env.get_goal_states():
-            L1_to_goal_state = WeightedAStarAgent.calculate_L1(self.env.to_row_col(goal_state),
-                                                               current_row_col)
-            min_dist = min(L1_to_goal_state,min_dist)
-        return min_dist
-
-    # def _get_path(self, node: Node) -> (List[int], int):
-    #     path = []
-    #     total_cost = 0
-    #     actions = []
-    #     while (True):
-    #         path.append(node.state)
-    #         actions.append(node.action)
-    #         total_cost += node.cost
-    #         node = node.parent
-    #         if node.parent is None:
-    #             break
-
-
-    #     return actions[::-1], total_cost
+    
