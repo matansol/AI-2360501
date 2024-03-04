@@ -93,6 +93,10 @@ class BFSAgent(Agent):
                 node.state = state
                 node.cost = cost
             
+            if state in env.get_goal_states(): # we are in a goal cell but we didn't find all the balls
+                expanded += 1
+                continue
+            
             if state not in close:
                 expended += 1
             close.add(state)
@@ -103,19 +107,23 @@ class BFSAgent(Agent):
                 next_state, cost, terminated = succ_dict[action]
                 if not next_state: # the cuerrent state is a hole
                     break
-                next_state = (next_state[0], state[1], state[2])
+                ball1 = state[1]
+                ball2 = state[2]
+                if next_state[0] == env.d1[0]:
+                    ball1 = True
+                if next_state[0] == env.d2[0]:
+                    ball2 = True
+                next_state = (next_state[0], ball1, ball2)
                 
-                if terminated:
-                    if env.is_final_state(next_state): # found the final state
-                        child = Node(next_state, node, cost, action)
-                        actions , total_cost = self._get_path(child)
-                        return actions, total_cost, expended
+                if env.is_final_state(next_state): # found the final state
+                    child = Node(next_state, node, cost, action)
+                    actions , total_cost = self._get_path(child)
+                    return actions, total_cost, expended
 
                 if next_state not in close and next_state not in [n.state for n in open]:
                     child = Node(state=next_state, parent=node, cost=cost, action=action) 
                     open.append(child)
         return None, -1, -1
-    
     
     
 def print_open(open):
@@ -205,6 +213,82 @@ class WeightedAStarAgent(Agent):
         return None, -1, -1
     
 
+class M_AStarEpsilonAgent(Agent):
+    # h_focal(v) = g(v)
+        
+    def search(self, env: DragonBallEnv, epsilon: int) -> Tuple[List[int], float, int]:
+        self.env = env
+        env.reset()
+        start = env.get_state()
+        root = Node(start, None, 0, None, 0, self.get_hsmap_value(start),self.get_hsmap_value(start))
+        expanded = 0
+        open = heapdict.heapdict()
+        key = (root.h, root.state[0])  # arbitration is by h value and index
+        open[key] = (key, root)
+        close = dict()
+        while open:
+            [curr_node, open] = AStarEpsilonAgent.choose_min_from_focal(open, epsilon)
+            
+            if curr_node.parent and curr_node.action is not None:
+                prev_state = curr_node.parent.state #if node.parent else None
+                env.reset()
+                env.set_state(prev_state)
+                state, cost, terminated = env.step(curr_node.action)
+                curr_node.state = state
+                curr_node.cost = cost
+            curr_state = curr_node.state
+            
+            if env.is_final_state(curr_state): # we found the final state
+                actions, total_cost = self._get_path(curr_node)
+                return actions, total_cost, expanded
+              
+            expanded += 1
+            if curr_state in env.get_goal_states(): # we are in a goal cell but we didn't find all the balls
+                continue  
+            
+            key = (curr_node.f, curr_state)
+            close[key] = curr_node
+            succ_dict = env.succ(curr_state)
+            actions = list(succ_dict.keys())
+            for action in actions:
+                next_state, cost, terminated = succ_dict[action]
+                if not next_state:
+                    break
+                
+                ball1 = curr_state[1]
+                ball2 = curr_state[2]
+                if next_state[0] == env.d1[0]:
+                    ball1 = True
+                if next_state[0] == env.d2[0]:
+                    ball2 = True
+                next_state = (next_state[0], ball1, ball2)
+                new_g_value = curr_node.g + cost
+                h_value = self.get_hsmap_value(next_state)
+                new_f_value =  new_g_value +  h_value
+                new_node = Node(next_state, curr_node, cost, action, new_g_value, h_value, new_f_value)
+                
+                if next_state in [val[1].state for val in open.values()]:  # the child is in open
+                    key = [key for key in open.keys() if key[1] == next_state[0]][0]
+                    curr_node_in_open = open[key][1]
+                    if new_f_value < curr_node_in_open.f:  # the new path is better
+                        open.pop(key)
+                        new_key = (new_f_value, next_state[0])
+                        open[new_key] = (new_key, new_node)
+                        
+                else: 
+                    if next_state in [val.state for val in close.values()]: # the child is in close
+                        key = [key for key in close.keys() if key[1] == next_state][0]
+                        curr_node_in_close = close[key]
+                        if new_f_value < curr_node_in_close.f: # the new path is better so we remove the child from close and add it to open
+                            close.pop(key)
+                            new_key = (new_f_value, next_state[0])
+                            open[new_key] = (new_key, new_node)
+                            
+                    else: # the child is not in open and not in close
+                        new_key = (new_f_value, next_state[0])
+                        open[new_key] = (new_key, new_node)
+        return None, -1, -1
+    
 
 
 class AStarEpsilonAgent(Agent):
@@ -250,15 +334,12 @@ class AStarEpsilonAgent(Agent):
                     break
                 
                 next_state = (next_state[0], state[1], state[2])
-                # if terminated:
-                #     if env.is_final_state(next_state): # we found the final state
-                #         child = Node(next_state, node, cost, action)
-                #         actions, total_cost = self._get_path(child)
-                #         return actions, total_cost, expanded
+
 
                 new_g_value = node.g + cost
                 h_value = self.get_hsmap_value(next_state)
                 new_f_value =  new_g_value +  h_value
+                
                 existing_state = False
                 for key in open.keys():
                     if open[key][1].state == next_state:
