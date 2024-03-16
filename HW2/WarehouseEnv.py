@@ -54,7 +54,7 @@ class WarehouseEnv(object):
     def generate(self, seed, num_steps):
         self.num_steps = num_steps
         self.seed = seed
-        self.robots = [Robot(p, 20, 0) for p in self.random_cells(2)]
+        self.robots = [Robot(p, 30, 0) for p in self.random_cells(2)]
         self.packages = [Package(p, d) for _ in range(4) for p in self.random_cells(1) for d in
                          self.random_cells(1)]
         for i in range(2):
@@ -133,6 +133,7 @@ class WarehouseEnv(object):
     def apply_operator(self, robot_index: int, operator: str):
         self.num_steps -= 1
         robot = self.robots[robot_index]
+        # print(f"robot index={robot_index},   operator: {operator}")
         assert operator in self.get_legal_operators(robot_index)
         assert not self.num_steps < 0
         if operator == 'park':

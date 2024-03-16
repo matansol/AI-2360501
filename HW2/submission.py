@@ -2,8 +2,12 @@ from Agent import Agent, AgentGreedy
 from WarehouseEnv import WarehouseEnv, manhattan_distance
 import random
 import time
+import sys
 
 MAX_DISTANCE = 10
+MAX_VALUE = sys.maxsize
+MIN_VALUE = -sys.maxsize-1
+WIN_VALUE = 1000
 
 def calc_f_value(env: WarehouseEnv, robot_id: int):
     robot = env.get_robot(robot_id)
@@ -11,112 +15,141 @@ def calc_f_value(env: WarehouseEnv, robot_id: int):
     p0 = env.packages[0]
     if robot.package is None:
         facture = 2
-        return max(facture*manhattan_distance(p1.position, p1.destination) - manhattan_distance(p1.position, robot.position),
-               facture*manhattan_distance(p0.position, p0.destination) - manhattan_distance(p0.position, robot.position))
+        pd1 = manhattan_distance(p1.position, p1.destination)
+        rd1 = manhattan_distance(p1.position, robot.position)
+        left =  facture*pd1 - rd1
+
+        pd2 = manhattan_distance(p0.position, p0.destination)
+        rd2 = manhattan_distance(p0.position, robot.position)
+        right = facture*pd2 - rd2
+        return max((facture*manhattan_distance(p1.position, p1.destination) - manhattan_distance(p1.position, robot.position))*p0.on_board,
+                   (facture*manhattan_distance(p0.position, p0.destination) - manhattan_distance(p0.position, robot.position))*p1.on_board)
     
-    return MAX_DISTANCE-manhattan_distance(robot.position, robot.package.destination)
+    return MAX_DISTANCE - manhattan_distance(robot.position, robot.package.destination)
 
 # TODO: section a : 3
 def smart_heuristic(env: WarehouseEnv, robot_id: int):
     if not env or robot_id < 0 or robot_id >= 2:
         return -1
-    other_robot_id = (robot_id + 1) % 2
+    
     robot = env.get_robot(robot_id)
-    other_robot = env.get_robot(other_robot_id)
-    a = 1
-    b = 10
+    a = 0
+    b = 20
     c = 1
     d = 10
-    # return robot.position[0]
-    return a*robot.battery + b*robot.credit + c*calc_f_value(env, robot_id) + d*(robot.package is not None)
-
-class Node:
-    def __init__(self, env , operator , agent_id, parent=None, value = 0, children = [] , max=True,depth =0) -> None:
-        self.env = env
-        self.operator = operator
-        self.agent_id=agent_id
-        self.parent = parent
-        self.value = value
-        self.children = children
-        self.max = max
-        self.depth = depth
-        self.policy =None
+    f = calc_f_value(env, robot_id)
+    val = a*robot.battery + b*robot.credit + c*calc_f_value(env, robot_id) + d*(robot.package is not None)
+    return val
 
 class AgentGreedyImproved(AgentGreedy):
     def heuristic(self, env: WarehouseEnv, robot_id: int):
         return smart_heuristic(env, robot_id)
+class Node:
+    def __init__(self, env, operator, agent_id, parent=None, value=0, children=[], node_max=True, depth=0, alpha=MIN_VALUE, beta=MAX_VALUE) -> None:
+        self.env = env
+        self.operator = operator
+        self.agent_id = agent_id
+        self.parent = parent
+        self.value = value
+        self.children = children
+        self.node_max = node_max
+        self.depth = depth
+        self.policy = None
+        self.alpha = alpha
+        self.beta = beta
 
 
 class AgentMinimax(Agent):
     # TODO: section b : 1
     def run_step(self, env: WarehouseEnv, agent_id, time_limit):
         start = time.time()
-        depth_for_minimax = 1
-        magic_number_for_depth = 1000
-        root = Node(env, None , agent_id , None , 0, [] , True , 0 )
-        curr_node = root
-        max_node = True
+        magic_number_for_depth = 20
+        root = Node(env, None, agent_id, None, 0, [], True, 0)
         current_solution = None
-        root_node = self.create_tree_in_depth_j(root, 0, start, time_limit)
-        for depth_for_minimax in range(1, magic_number_for_depth): #determines depth
-            root_node = self.create_tree_in_depth_j(root_node, depth_for_minimax, start, time_limit)
-            if( root_node == None): # if folded, because of time shortage, return previous optimal solution
+        root_node = self.create_tree_in_depth_j(root, 0, start, time_limit, agent_id)
+
+        for depth_for_minimax in range(1, magic_number_for_depth + 1):  # determines depth
+            root_node = self.create_tree_in_depth_j(root_node, depth_for_minimax, start, time_limit, agent_id)
+            if (root_node == None):  # if folded, because of time shortage, return previous optimal solution
                 return current_solution
             current_solution = root_node.policy.operator
-            end = time.time()
+        return current_solution
 
-        raise NotImplementedError()
-
-    def create_tree_in_depth_j(self, root:Node, j:int, start_time, time_limit):
-        if root == None:
+    def create_tree_in_depth_j(self, curr_node: Node, j: int, start_time, time_limit, root_agent_id):
+        if curr_node == None:
             return None
-        if j == 0:
-            root.value = smart_heuristic(root.env, root.agent_id)
-            return root
+        if curr_node.env.done():
+            balance = curr_node.env.get_balances()
+            if balance[0] == balance[1]:  # draw
+                curr_node.value = 0
+                return curr_node
+            wining_agent = balance.index(max(balance))
+            if wining_agent == curr_node.agent_id:
+                curr_node.value = WIN_VALUE #balance[wining_agent] - balance[wining_agent^1]
+            else:
+                curr_node.value = -WIN_VALUE #(balance[wining_agent] - balance[wining_agent^1])
+            return curr_node
 
-        if j == 1 and len(root.children) == 0 : # node hasn`t been expanded yet
-            successors = self.successors(root.env, root.agent_id)
-            max_node = root.max
-            for operator, child in zip(*successors):  # succ is a list of paires of operators and the matching env
-                if (time.time() - start_time > 0.9 * time_limit): # time is over, must fold
+        if j == 0 or curr_node.env.robots[curr_node.agent_id].battery == 0:
+            curr_node.value = smart_heuristic(curr_node.env, root_agent_id)
+            return curr_node
+
+        TIME_PERCENTAGE = 0.9
+        if j == 1 and len(curr_node.children) == 0:  # node hasn`t been expanded yet
+            successors = self.successors(curr_node.env, curr_node.agent_id)
+            for operator, child in zip(*successors):  # succ is a list of pairs of operators and the matching env
+                if (time.time() - start_time > TIME_PERCENTAGE * time_limit): # time is over, must fold
                     return None
-                child_node = Node(child, operator, root.agent_id^1,
-                                  root, 0, [], (not root.max), root.depth+1)
-                child_node = self.create_tree_in_depth_j(child_node, j - 1, start_time, time_limit)
-                if(child_node == None):
+                child_node = Node(child, operator, curr_node.agent_id ^ 1,
+                                  curr_node, 0, [], (not curr_node.node_max), curr_node.depth + 1)
+                child_node = self.create_tree_in_depth_j(child_node, j - 1, start_time, time_limit, root_agent_id)
+                if (child_node == None):
                     return None
-                root.children.append(child_node)
+                curr_node.children.append(child_node)
 
         else: # existing nodes
-            for i in range(len(root.children)):
-                if(time.time() - start_time > 0.9 *time_limit): # time is over, must fold
+            for i in range(len(curr_node.children)):
+                if (time.time() - start_time > TIME_PERCENTAGE *time_limit):  # time is over, must fold
                     return None
-                child = self.create_tree_in_depth_j(root.children[i], j-1, start_time, time_limit)
-                if(child == None):
+                child = self.create_tree_in_depth_j(curr_node.children[i], j - 1, start_time, time_limit, root_agent_id)
+                if (child == None):
                     return None
-                root.children[i] = child
+                curr_node.children[i] = child
 
-        root.policy = self.choose_policy(root)
-        root.value = root.policy.value
-        return root
+        curr_node.policy = self.find_best_child(curr_node)
+        curr_node.value = curr_node.policy.value
+        return curr_node
 
-    def choose_policy(self,root:Node):
-        if(root.max == True):
-            max = root.children[0].value
-            policy_child = root.children[0]
-            for child in root.children:
-                if child.value > max:
-                    max = child.value
-                    policy_child = child
-            return policy_child
+    # def choose_policy(self, root: Node):
+    #     if (root.max == True):
+    #         max_val = root.children[0].value
+    #         policy_child = root.children[0]
+    #         for child in root.children:
+    #             if child.value > max_val:
+    #                 max_val = child.value
+    #                 policy_child = child
+    #         return policy_child
+    #     else:
+    #         min_val = root.children[0].value
+    #         policy_child = root.children[0]
+    #         for child in root.children:
+    #             if child.value < min_val:
+    #                 min_val = child.value
+    #                 policy_child = child
+    #         return policy_child
+
+    def find_best_child(self, curr_node: Node):
+        if curr_node.node_max == True:
+            big_small = lambda x,y: x>y
         else:
-            min = root.children[0].value
-            policy_child = root.children[0]
-            for child in root.children:
-                if child.value < min:
-                    min = child.value
-                    policy_child = child
-            return policy_child
+            big_small = lambda x,y: x<y
+        max_val = curr_node.children[0].value
+        policy_child = curr_node.children[0]
+        for child in curr_node.children:
+            if big_small(child.value, max_val):
+                max_val = child.value
+                policy_child = child
+        return policy_child
 
 
 class AgentAlphaBeta(Agent):
@@ -125,10 +158,33 @@ class AgentAlphaBeta(Agent):
         raise NotImplementedError()
 
 
-class AgentExpectimax(Agent):
+class AgentExpectimax(AgentMinimax):
     # TODO: section d : 1
-    def run_step(self, env: WarehouseEnv, agent_id, time_limit):
-        raise NotImplementedError()
+    def find_best_child(self, curr_node: Node):
+        succ_list = curr_node.children
+        policy_child = succ_list[0]
+        if curr_node.node_max == True:
+            max_val = policy_child.value
+            for child in curr_node.children:
+                if child.value > max_val:
+                    max_val = child.value
+                    policy_child = child
+            return policy_child
+
+        n = len(succ_list)
+        special_operators = ['move west', 'pick up']
+        E_values = 0
+        for operator in special_operators:
+            if operator in [node.operator for node in succ_list]:
+                n += 1
+
+        for succ in succ_list:
+            p = 1/n
+            if succ.operator in special_operators:
+                p = 2/n
+            E_values += p*succ.value
+        policy_child.value = E_values
+        return policy_child
 
 
 # here you can check specific paths to get to know the environment
@@ -153,3 +209,6 @@ class AgentHardCoded(Agent):
         operators, _ = self.successors(env, robot_id)
 
         return random.choice(operators)
+
+
+
